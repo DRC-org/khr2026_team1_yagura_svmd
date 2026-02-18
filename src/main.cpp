@@ -27,10 +27,29 @@ FastLED_NeoPixel<1, RGB, NEO_GRB> strip;  // RGBLED 制御用
 
 MCP_CAN CAN(CS);
 
-long unsigned int rxId;
-unsigned char len = 0;
-unsigned char rxBuf[8];
-char msgString[128];
+const float SERVO_SPEED = 10.0f;  // 度/秒
+
+Servo* servos[2] = {&servo0, &servo1};
+float currentAngles[2] = {80.0f, 80.0f};
+float targetAngles[2] = {80.0f, 80.0f};
+unsigned long lastUpdateMs = 0;
+
+void updateServos() {
+  unsigned long now = millis();
+  float dt = (now - lastUpdateMs) / 1000.0f;
+  lastUpdateMs = now;
+
+  for (int i = 0; i < 2; i++) {
+    float diff = targetAngles[i] - currentAngles[i];
+    if (fabsf(diff) < 0.5f) {
+      currentAngles[i] = targetAngles[i];
+    } else {
+      float step = constrain(diff, -SERVO_SPEED * dt, SERVO_SPEED * dt);
+      currentAngles[i] += step;
+    }
+    servos[i]->write((int)roundf(currentAngles[i]));
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -59,9 +78,14 @@ void setup() {
   // servo2.attach(SV2);
   // servo3.attach(SV3);
 
+  servo0.write(80);
+  servo1.write(80);
+
   delay(50);
 
   // TODO: ホーミング
+
+  lastUpdateMs = millis();
 
   if (CAN.begin(MCP_ANY, CAN_1000KBPS, MCP_16MHZ) != CAN_OK) {
     Serial.println("CAN.begin(...) failed.");
@@ -89,23 +113,22 @@ void loop() {
       unsigned char command = buf[0];
 
       if (command == 0x00) {  // ハンド 1 を閉じる
-
-        servo0.write(170);
+        targetAngles[0] = 170.0f;
       } else if (command == 0x01) {  // ハンド 1 を開く
-
-        servo0.write(80);
+        targetAngles[0] = 80.0f;
       } else if (command == 0x02) {  // ハンド 1 を停止
-                                     // TODO: サーボ停止
+        targetAngles[0] = currentAngles[0];
       }
 
       if (command == 0x10) {  // ハンド 2 を閉じる
-        servo1.write(170);
+        targetAngles[1] = 170.0f;
       } else if (command == 0x11) {  // ハンド 2 を開く
-
-        servo1.write(80);
+        targetAngles[1] = 80.0f;
       } else if (command == 0x12) {  // ハンド 2 を停止
-                                     // TODO: サーボ停止
+        targetAngles[1] = currentAngles[1];
       }
     }
   }
+
+  updateServos();
 }
